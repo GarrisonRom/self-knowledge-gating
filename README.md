@@ -373,13 +373,15 @@ context_tokens, output_tokens, latency_ms, failure_label
 │   └── external/
 ├── notebooks/
 ├── scripts/
-│   └── download_models.py
+│   ├── download_models.py
+│   └── run_bge_smoke.py
 ├── src/
 │   └── self_knowledge_gating/
 │       ├── schemas.py
 │       ├── signals.py
 │       ├── policy.py
 │       ├── retrieval.py
+│       ├── bge_retrieval.py
 │       ├── generation.py
 │       ├── verification.py
 │       ├── conflict.py
@@ -412,12 +414,22 @@ python -m venv .venv
 演示使用内存检索器、元数据边界信号和确定性答案器，覆盖直接回答、检索后回答、无权限拒答和歧义澄清。真实系统只需要替换以下接口：
 
 - `BoundarySignalEstimator`：接入模型自我知识、语义熵、采样一致性和访问状态；
-- `Retriever`：接入 BM25、向量检索、混合检索或 Materials Project 查询；
+- `Retriever`：接入 `BGERetriever`、BM25、向量检索、混合检索或 Materials Project 查询；
 - `Answerer`：接入实际 LLM，并返回原子 `Claim`；
 - `EvidenceVerifier`：接入单位、数值容差和声明-证据蕴含检查；
 - `ConflictAdjudicator`：接入更强的来源可靠性、时间和冲突裁决器。
 
 `SelfKnowledgeGatingPipeline.run()` 是统一编排入口。它把“路由动作”和“最终结果”分开记录：检索路由成功后，最终结果是 `answer`；检索失败或冲突未解决时，最终结果是 `abstain`。
+
+模型下载完成后，用同一套 pipeline 做 BGE smoke：
+
+```powershell
+\.venv\Scripts\python scripts/run_bge_smoke.py `
+  --encoder-path <ModelScope-bge-m3-snapshot> `
+  --reranker-path <ModelScope-bge-reranker-v2-m3-snapshot>
+```
+
+该入口同时验证 dense candidate retrieval、reranker 排序、证据验证、冲突裁决和最终 `answer/abstain` 结果；它不代表正式指标，正式指标必须读取版本化语料和标注 manifest。
 
 ## 16. 配置与复现
 

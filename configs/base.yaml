@@ -8,6 +8,19 @@ decision:
     - retrieve
     - clarify
     - abstain
+  boundary_states:
+    - parametric_known
+    - uncertain
+    - no_access
+    - stale
+  reason_codes:
+    - AMBIGUOUS_QUESTION
+    - INSUFFICIENT_EVIDENCE
+    - PARAMETRIC_UNCERTAINTY
+    - STALE_PARAMETRIC_MEMORY
+    - CONFLICT_UNRESOLVED
+    - NO_AUTHORIZED_SOURCE
+    - HIGH_RISK_UNSUPPORTED
   thresholds:
     self_knowledge: 0.80
     answerability: 0.75
@@ -30,6 +43,62 @@ evaluation:
   split: validation
   output_dir: results/runs
   save_evidence_snapshot: true
+  primary_metrics:
+    - selective_risk
+    - coverage
+    - retrieval_calls
+    - context_tokens
+    - latency_p50_ms
+    - latency_p95_ms
+    - unsupported_answer_rate
+  pareto:
+    sweep_thresholds: true
+    cost_dimensions:
+      - retrieval_calls
+      - context_tokens
+      - latency_p95_ms
+    retain_non_dominated: true
+
+benchmark:
+  domain: materials_science
+  source: materials_project
+  slices:
+    - common_property
+    - long_tail
+    - canary
+    - temporal
+    - conflict
+    - ambiguous
+  evaluator:
+    numeric_comparison: deterministic
+    categorical_comparison: canonical_exact
+    llm_extraction_only: true
+    manual_gold_labels: false
+
+abstention:
+  risk_target: 0.05
+  calibration_methods:
+    - temperature_scaling
+    - isotonic_regression
+    - conformal_abstention
+  high_risk_slices:
+    - no_access
+    - stale
+    - conflict
+    - canary
+
+conflict:
+  adjudication: claim_level
+  source_fields:
+    - reliability
+    - timestamp
+    - freshness
+    - entailment
+    - agreement
+  baselines:
+    - trust_parameter
+    - trust_retrieval
+    - majority_rule
 
 runtime:
   model_name: replace-with-model

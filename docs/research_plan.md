@@ -1,5 +1,7 @@
 # Research plan
 
+This is the general system plan. The material-science master's version, controlled benchmark, failure taxonomy and Pareto protocol are specified in [`thesis_design.md`](thesis_design.md). The mechanism evidence and literature-derived predictions are in [`literature_review.md`](literature_review.md).
+
 ## 1. Problem formulation
 
 For a question `q`, the system estimates a state vector:
@@ -103,3 +105,18 @@ Report clarification success after one turn, user-effort proxy, conflict resolut
 - A conflict score can hide source quality assumptions; preserve raw source metadata and disagreement details.
 - Abstention can improve risk by refusing too much; report coverage and utility together.
 - LLM-as-judge scores can be unstable; use deterministic metrics where possible and retain judge prompts and versions.
+
+## 9. Boundary-state extension
+
+The project now treats the following as separate, model-conditional states rather than one confidence axis:
+
+- `parametric_known`: closed-book answer passes the deterministic evaluator under the current reference snapshot;
+- `uncertain`: the question is accessible and answerable, but the answer or self-assessment is unstable or miscalibrated;
+- `no_access`: the reliable source is withheld, private or permission-denied under the current access policy;
+- `stale`: the parameter snapshot or retrieved evidence predates the authoritative source and conflicts with it.
+
+The state, access policy, source version and checkpoint must be logged together. A confidence value without these fields is not sufficient evidence of self-knowledge.
+
+## 10. Pareto reporting
+
+Threshold sweeps produce non-dominated points over coverage, selective risk, retrieval calls, context tokens and p50/p95 latency. `always-answer` and `always-RAG` are endpoints, not the only baselines. Any headline claim must identify the budget slice and show the frontier shift; a single best accuracy point is not the primary result.

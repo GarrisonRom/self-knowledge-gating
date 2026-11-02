@@ -12,7 +12,16 @@
 
 > 在准确性、选择性风险、检索成本和拒答质量之间，能否通过校准的自我知识信号，学习一个比 always-answer 和 always-RAG 更可靠的决策策略？
 
-## 2. 决策契约
+## 2. 核心研究问题
+
+1. **边界识别**：LLM 能否可靠区分 `parametric_known / uncertain / no_access / stale`，而不是把它们压缩成一个 verbalized confidence？
+2. **检索门控**：在相同检索调用数、上下文 token 和 p95 时延下，边界信号门控能否优于 `always-RAG`、`always-answer` 和单一置信度路由？主要产出是 coverage-risk-cost-latency 的 Pareto frontier。
+3. **冲突裁决**：当参数记忆与检索证据冲突时，显式的 claim-level adjudication 是否优于固定信任参数、固定信任检索或多数规则？
+4. **高风险拒答**：带 `reason_code` 的拒答能否降低错误答案和权限泄露，同时保持可接受的 coverage，而不是用过度拒答换取表面安全？
+
+硕士阶段以材料科学问答作为受控场景，先解决可复现评测、失效归因和选择性决策，再决定是否扩展到模块化知识存储。
+
+## 3. 决策契约
 
 系统的每次决策都必须输出一个动作、可审计的信号和理由。动作定义如下：
 
@@ -31,7 +40,7 @@
 - `conflict_score`：参数记忆、检索证据和多来源证据之间的不一致程度。
 - `retrieval_utility`：检索带来的预期收益减去成本、延迟和噪声风险。
 
-## 3. 研究流程
+## 4. 研究流程
 
 ```mermaid
 flowchart LR
@@ -51,14 +60,16 @@ flowchart LR
 
 冲突裁决不允许只根据一个分数静默覆盖证据。系统需要保留冲突来源、时间、新鲜度、来源可靠性和裁决理由；无法在阈值内解决时，进入 `clarify` 或 `abstain`。
 
-## 4. 研究假设
+## 5. 研究假设
 
 - **H1：自适应检索**。经过校准的门控器可以减少不必要的检索，同时保持或提升回答准确率，相比 always-RAG 具有更低的检索率和成本。
 - **H2：选择性可靠性**。允许 `abstain` 后，系统的 coverage-risk 曲线和 AURC 优于 always-answer；在相同 coverage 下，选择性风险更低。
 - **H3：冲突裁决**。显式建模参数记忆与检索证据的冲突，可以减少知识过时、来源不一致和证据不足导致的错误回答。
 - **H4：澄清收益**。在问题歧义可被一个最小问题消除时，`clarify` 比直接回答或直接拒答具有更高的后续任务成功率。
 
-## 5. 评测设计
+更细的硕士课题设计、材料基准和验收标准见 [`docs/thesis_design.md`](docs/thesis_design.md)。
+
+## 6. 评测设计
 
 评测集按决策类型分层，而不是只按题目主题分层：
 
@@ -78,10 +89,11 @@ flowchart LR
 - 校准质量：ECE、Brier score、NLL、可靠性图。
 - 检索效率：retrieval rate、unnecessary retrieval rate、token/latency cost。
 - 决策质量：clarification success、conflict resolution accuracy、unsupported answer rate。
+- Pareto frontier：coverage-risk、cost-risk、latency-coverage 和 unsupported-rate-retrieval-rate 的非支配点集合。
 
 阈值只能使用验证集确定；测试集只用于最终报告。所有结果需要保存配置、模型版本、检索器版本、随机种子和证据快照索引。
 
-## 6. 目录结构
+## 7. 目录结构
 
 ```text
 .
@@ -99,6 +111,8 @@ flowchart LR
 │   └── external/            # 外部语料或基准数据
 ├── docs/
 │   ├── research_plan.md     # 问题定义、假设、实验矩阵和里程碑
+│   ├── thesis_design.md      # 材料领域硕士课题设计与 Pareto 协议
+│   ├── literature_review.md  # 机制文献、研究缺口和可检验预测
 │   └── annotation_schema.md # 数据标注与 JSONL 契约
 ├── notebooks/               # 探索性分析，不作为生产入口
 ├── scripts/                 # 数据准备、运行实验和汇总结果的入口说明
@@ -113,31 +127,35 @@ flowchart LR
     └── tables/              # 表格
 ```
 
-## 7. 当前状态与使用方式
+## 8. 当前状态与使用方式
 
 当前提交是研究代码骨架，重点是固定概念、数据边界和实验协议；具体模型、检索器和数据集尚未绑定。安装入口已经由 `pyproject.toml` 预留，后续实现阶段可在不改变目录契约的情况下添加依赖和命令行入口。
 
 建议的工作顺序：
 
-1. 根据 `docs/annotation_schema.md` 建立小规模、可审计的开发集。
-2. 实现四动作决策器和信号记录，不先追求复杂检索器。
-3. 在验证集上校准阈值，固定配置后再运行测试集。
-4. 将每次运行的配置、决策日志和汇总指标写入 `results/runs/`，只提交可复现的轻量元数据。
+1. 根据 `docs/annotation_schema.md` 和 `docs/thesis_design.md` 建立材料领域开发集。
+2. 实现四状态边界信号和四动作决策器，不先追求复杂检索器。
+3. 在验证集上校准阈值，固定配置后扫阈值得到 Pareto frontier，再运行测试集。
+4. 将每次运行的配置、决策日志、成本和前沿点写入 `results/runs/`，只提交可复现的轻量元数据。
 
-## 8. 数据与隐私约束
+## 9. 数据与隐私约束
 
 真实数据、模型权重、API 密钥、向量索引和大体积运行产物默认不进入 Git。数据目录中的 `.gitkeep` 只用于保留目录；数据来源、许可、版本、清洗脚本和哈希应记录在对应清单中。任何需要外部服务的配置都通过环境变量注入，不把密钥写入 `configs/`。
 
-## 9. 路线图
+## 10. 路线图
 
 - [ ] 固化数据标注协议和开发集。
+- [ ] 建立 Materials Project 三层评测集和无答案 canary。
+- [ ] 完成四状态边界识别与 Pareto frontier 基线。
+- [ ] 完成检索/生成失效归因和受控冲突集。
 - [ ] 实现自我知识、可回答性和证据充分性信号。
 - [ ] 实现温度缩放或等价的校准基线。
 - [ ] 接入一个可替换的检索器并记录证据快照。
 - [ ] 实现参数记忆与证据冲突裁决器。
+- [ ] 加入 reason-coded abstention、权限泄露 canary 和 conformal 基线。
 - [ ] 完成四动作门控、消融和选择性风险评测。
 - [ ] 发布可复现实验配置和结果汇总。
 
-## 10. License
+## 11. License
 
 许可证尚未确定。公开发布前请根据代码来源、数据许可和模型服务条款补充许可证文件。

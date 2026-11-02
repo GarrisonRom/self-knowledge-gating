@@ -1,0 +1,36 @@
+project:
+  name: self-knowledge-gating
+  version: 0.1.0
+
+decision:
+  actions:
+    - answer
+    - retrieve
+    - clarify
+    - abstain
+  thresholds:
+    self_knowledge: 0.80
+    answerability: 0.75
+    evidence_sufficiency: 0.70
+    conflict_score: 0.50
+    retrieval_utility: 0.00
+  calibration:
+    method: temperature_scaling
+    validation_fraction: 0.20
+
+retrieval:
+  enabled: true
+  provider: replace-with-retriever
+  top_k: 5
+  max_context_tokens: 4000
+  index_path: data/processed/index
+
+evaluation:
+  seed: 42
+  split: validation
+  output_dir: results/runs
+  save_evidence_snapshot: true
+
+runtime:
+  model_name: replace-with-model
+  api_base: null

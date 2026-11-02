@@ -274,7 +274,15 @@ context_tokens, output_tokens, latency_ms, failure_label
 ├── scripts/
 ├── src/
 │   └── self_knowledge_gating/
-│       └── __init__.py
+│       ├── schemas.py
+│       ├── signals.py
+│       ├── policy.py
+│       ├── retrieval.py
+│       ├── generation.py
+│       ├── verification.py
+│       ├── conflict.py
+│       ├── pipeline.py
+│       └── __main__.py
 └── results/
     ├── runs/
     ├── figures/
@@ -289,7 +297,27 @@ context_tokens, output_tokens, latency_ms, failure_label
 - `scripts/`：数据准备、运行实验、评测和结果汇总入口；
 - `results/`：配置、运行元数据、前沿点、图表和表格，不保存大型原始输出。
 
-## 15. 配置与复现
+## 15. Pipeline 运行入口
+
+安装项目后可以直接运行无外部依赖的管线演示：
+
+```powershell
+python -m venv .venv
+\.venv\Scripts\python -m pip install -e .
+\.venv\Scripts\python -m self_knowledge_gating
+```
+
+演示使用内存检索器、元数据边界信号和确定性答案器，覆盖直接回答、检索后回答、无权限拒答和歧义澄清。真实系统只需要替换以下接口：
+
+- `BoundarySignalEstimator`：接入模型自我知识、语义熵、采样一致性和访问状态；
+- `Retriever`：接入 BM25、向量检索、混合检索或 Materials Project 查询；
+- `Answerer`：接入实际 LLM，并返回原子 `Claim`；
+- `EvidenceVerifier`：接入单位、数值容差和声明-证据蕴含检查；
+- `ConflictAdjudicator`：接入更强的来源可靠性、时间和冲突裁决器。
+
+`SelfKnowledgeGatingPipeline.run()` 是统一编排入口。它把“路由动作”和“最终结果”分开记录：检索路由成功后，最终结果是 `answer`；检索失败或冲突未解决时，最终结果是 `abstain`。
+
+## 16. 配置与复现
 
 `configs/base.yaml` 已预留以下设置：
 
@@ -302,7 +330,7 @@ context_tokens, output_tokens, latency_ms, failure_label
 
 每次运行至少记录 Git commit、配置文件、模型版本、检索器版本、数据版本、随机种子、访问策略、开始/结束时间和失败原因。API key、私有路径和模型权重通过环境变量或本地未跟踪文件注入。
 
-## 16. 路线图
+## 17. 路线图
 
 - [ ] 固化 Materials Project manifest、字段映射和属性级容差。
 - [ ] 生成常见、长尾、canary、时间漂移、冲突和歧义切片。
@@ -314,6 +342,6 @@ context_tokens, output_tokens, latency_ms, failure_label
 - [ ] 扫描预算并生成 Pareto frontier。
 - [ ] 完成消融、机制分析和可复现实验汇总。
 
-## 17. License
+## 18. License
 
 许可证尚未确定。公开发布前根据代码来源、数据许可和模型服务条款补充许可证文件。

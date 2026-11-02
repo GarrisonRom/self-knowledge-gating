@@ -10,5 +10,8 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
 
+[project.scripts]
+skg-pipeline-demo = "self_knowledge_gating.__main__:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]

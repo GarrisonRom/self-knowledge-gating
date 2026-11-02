@@ -7,6 +7,12 @@ venv/
 .env.*
 !.env.example
 
+# Downloaded model weights and local caches
+models/
+model_cache/
+.cache/
+.modelscope/
+
 # Tooling and generated metadata
 .pytest_cache/
 .mypy_cache/

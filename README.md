@@ -123,6 +123,21 @@ flowchart LR
 - `abstention_failure`：应该拒答却回答，或低风险可答问题被无故拒答；
 - `permission_failure`：泄露或推断权限拒绝来源中的隐藏内容。
 
+### 6.4 语料、任务和结构化辅助数据
+
+文本检索底座与结构化 metadata 分开管理：
+
+| 层级 | 数据来源 | 用途 |
+| --- | --- | --- |
+| 语料/底座 | MatScholar abstracts | 材料科学摘要检索与引用支持 |
+| 语料/底座 | ChemNLP arXiv / PubChem | 化学实体、性质和文献证据检索 |
+| 语料/底座 | mined recipes（合成配方） | 配方、条件和步骤的长尾检索 |
+| 任务/标注 | MatSci-NLP / MatScholar Task-Schema QA | 问题、答案、证据和任务类型 |
+| 小评测 | ChemRxivQuest / ChemTEB | 小规模离线检索、重排和鲁棒性评测 |
+| 结构化辅助 | Materials Project / NOMAD / JARVIS / Matbench | 材料 ID、化学式、属性、单位、条件和版本 metadata |
+
+Materials Project、NOMAD、JARVIS 和 Matbench **不直接作为文本向量训练语料**。它们用于确定性属性比对、实体链接、条件过滤、时间版本和无答案/冲突样本构造。每个来源需要记录版本、获取时间、许可、字段映射和内容哈希。
+
 ## 7. 实验矩阵与归因
 
 ### 7.1 系统对照
@@ -146,6 +161,92 @@ flowchart LR
 - 访问权限和检索器可用性。
 
 每个实验单元格分别统计检索失败、证据利用失败、抄写失败、编造和拒答失败，不能把未检索到证据的错误归因给生成器。
+
+### 7.3 固定检索模型与 ModelScope 离线环境
+
+主检索配置固定为：
+
+- **Dense encoder**：`BAAI/bge-m3`；
+- **Reranker**：`BAAI/bge-reranker-v2-m3`；
+- **下载渠道**：ModelScope；
+- **初始模式**：bge-m3 dense embedding → candidate top-k → bge-reranker-v2-m3 重排；sparse/multi-vector 模式作为单独消融，不与主结果混合。
+
+环境最低约束：
+
+| 组件 | 要求 |
+| --- | --- |
+| Python | 3.10 或 3.11 |
+| PyTorch | 2.1+，按实际 NVIDIA CUDA 版本安装匹配 wheel；CPU 可运行但不能与 GPU 时延结果混报 |
+| ModelScope | `modelscope>=1.18` |
+| FlagEmbedding | `FlagEmbedding>=1.3` |
+| Transformers | `transformers>=4.40` |
+| 运行依赖 | `accelerate`、`safetensors`、`sentencepiece`、`numpy`、`pandas`、`pyyaml`、`tqdm`、`scikit-learn` |
+
+安装和下载：
+
+```powershell
+python -m venv .venv
+\.venv\Scripts\python -m pip install -U pip
+\.venv\Scripts\python -m pip install -e ".[retrieval]"
+\.venv\Scripts\python scripts/download_models.py --cache-dir models/modelscope
+```
+
+`download_models.py` 只使用 ModelScope 的 `snapshot_download`，默认下载以下两个 ID：
+
+```text
+BAAI/bge-m3
+BAAI/bge-reranker-v2-m3
+```
+
+脚本会打印两个实际快照路径；将路径写入 `configs/base.yaml` 的 `retrieval.*.local_dir`，并把 revision 或快照哈希一并保存到运行 manifest。
+
+下载完成后，离线评测必须设置本地模型目录和离线开关：
+
+```powershell
+$env:MODELSCOPE_CACHE = (Resolve-Path "models/modelscope").Path
+$env:HF_HUB_OFFLINE = "1"
+$env:TRANSFORMERS_OFFLINE = "1"
+```
+
+离线运行不得触发网络回退。运行记录必须保存模型 revision 或快照哈希、Python/PyTorch/CUDA/Transformers/FlagEmbedding/ModelScope 版本、设备、精度（`fp32`/`fp16`/`bf16`）、最大长度、batch size、candidate top-k 和最终 top-k。
+
+## 7.4 检索离线评测流程
+
+固定流程如下：
+
+1. 使用 `bge-m3` 对 query 和语料编码，记录归一化方式、批大小、最大长度和 embedding 版本。
+2. 第一阶段召回 candidate top-k，至少保存 `top_k=10` 和 `top_k=20` 的结果。
+3. 对固定 candidate 集使用同一个 `bge-reranker-v2-m3` 重排；主结果固定 candidate 数和最大输入长度。
+4. 为每个 query 保存相关文档 ID、排序分数、正例、hard negative、语料版本和分桶标签。
+5. 在无网络环境下计算检索指标，并将每个 bucket 的样本数和 bootstrap 95% CI 一并输出。
+
+## 7.5 必报的分桶指标
+
+离线检索结果必须单独报告以下指标，不能只给总体平均：
+
+- `Recall@10`、`Recall@20`：报告第一阶段召回；同时保留重排后对应结果用于审计；
+- `nDCG@10`：使用 graded relevance 时记录 relevance 定义；
+- `MRR@10`：记录第一个相关证据的排名；
+- `hard-negative distinction rate`：对每个正例-负例对计算 `score(positive) > score(negative)` 的比例；并明确 ties 的处理规则。
+
+每个指标至少按以下四类敏感性单独成桶：
+
+1. **化学式别名鲁棒性**：规范化式、别名、括号/价态写法和大小写变化；
+2. **牌号/状态敏感性**：材料牌号、相态、晶型、热处理/制备状态；
+3. **温度/时间条件敏感性**：温度、保温时间、测试时间、老化时间和时间版本；
+4. **单位换算敏感性**：eV/J、K/°C、质量/摩尔、长度/体积等可换算单位。
+
+桶标签来自 query 和 metadata manifest，不从模型输出反推。每个 bucket 报告 `n`、Recall@10/20、nDCG@10、MRR@10、hard-negative 区分率；总体均值不能掩盖某一类条件敏感性退化。
+
+## 7.6 端到端可靠性评测
+
+在端到端比较中，必须固定同一套 **reranker、LLM、prompt、证据预算和输出格式**，只改变门控或检索策略。最终至少报告：
+
+- **引用支持率（citation support rate）**：被权威证据逐条支持的引用数 / 输出引用总数；
+- **无答案拒答正确率（no-answer abstention accuracy）**：无答案 canary 上正确选择 `abstain` 的样本数 / canary 总数，同时报告不必要拒答率；
+- **badcase 率**：预先定义的失败样本数 / 评测样本数。
+
+`badcase` 至少包含：无依据回答、引用错误来源、化学式/单位错误、温度或时间条件错配、过期证据未披露、冲突未披露、无答案却回答和权限泄露。端到端结果要同时给总体值和四类敏感性分桶值，并保留可回溯的 query、证据 ID、模型版本和 prompt 版本。
 
 ## 8. 冲突裁决
 
@@ -272,6 +373,7 @@ context_tokens, output_tokens, latency_ms, failure_label
 │   └── external/
 ├── notebooks/
 ├── scripts/
+│   └── download_models.py
 ├── src/
 │   └── self_knowledge_gating/
 │       ├── schemas.py
@@ -323,9 +425,12 @@ python -m venv .venv
 
 - `decision.boundary_states` 和 `decision.actions`；
 - `decision.reason_codes` 与校准阈值；
+- `retrieval.dense_encoder`、`retrieval.reranker`、ModelScope revision 和离线路径；
+- 语料底座、结构化 metadata、candidate top-k、最终 top-k 和分桶字段；
 - `benchmark.domain`、数据切片和确定性评测器；
 - `abstention` 的风险目标和校准方法；
 - `conflict` 的声明级裁决字段与固定信任基线；
+- `evaluation.retrieval_metrics` 的 Recall/nDCG/MRR/hard-negative 指标；
 - `evaluation.pareto` 的资源维度和非支配点筛选。
 
 每次运行至少记录 Git commit、配置文件、模型版本、检索器版本、数据版本、随机种子、访问策略、开始/结束时间和失败原因。API key、私有路径和模型权重通过环境变量或本地未跟踪文件注入。
@@ -333,13 +438,17 @@ python -m venv .venv
 ## 17. 路线图
 
 - [ ] 固化 Materials Project manifest、字段映射和属性级容差。
+- [ ] 固定 ModelScope 模型 revision 并完成 bge-m3 / reranker 离线缓存。
+- [ ] 建立 MatScholar、ChemNLP、PubChem 和 mined recipes 的语料 manifest。
 - [ ] 生成常见、长尾、canary、时间漂移、冲突和歧义切片。
+- [ ] 完成四类敏感性分桶的 Recall、nDCG、MRR 和 hard-negative 指标。
 - [ ] 实现四状态边界信号与四动作决策器。
 - [ ] 完成温度缩放、isotonic 和 conformal 校准基线。
 - [ ] 接入可替换检索器并记录证据快照。
 - [ ] 实现声明级证据检查、冲突裁决和失败归因。
 - [ ] 实现 reason-coded abstention 和权限泄露 canary。
 - [ ] 扫描预算并生成 Pareto frontier。
+- [ ] 在固定 reranker/LLM/prompt 下报告引用支持率、无答案拒答正确率和 badcase 率。
 - [ ] 完成消融、机制分析和可复现实验汇总。
 
 ## 18. License

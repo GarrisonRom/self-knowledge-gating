@@ -33,10 +33,39 @@ decision:
 
 retrieval:
   enabled: true
-  provider: replace-with-retriever
-  top_k: 5
+  provider: modelscope
+  offline: true
+  dense_encoder:
+    model_id: BAAI/bge-m3
+    local_dir: replace-with-download-output
+    revision: replace-with-snapshot-revision
+    normalize_embeddings: true
+    max_length: 8192
+    batch_size: 16
+  reranker:
+    model_id: BAAI/bge-reranker-v2-m3
+    local_dir: replace-with-download-output
+    revision: replace-with-snapshot-revision
+    max_length: 512
+    batch_size: 8
+  candidate_top_k: 100
+  top_k: 20
   max_context_tokens: 4000
   index_path: data/processed/index
+  corpus:
+    - matscholar_abstracts
+    - chemnlp_arxiv_pubchem
+    - mined_recipes
+  structured_metadata:
+    - materials_project
+    - nomad
+    - jarvis
+    - matbench
+  bucket_fields:
+    - formula_alias
+    - grade_or_state
+    - temperature_or_time
+    - unit_conversion
 
 evaluation:
   seed: 42
@@ -51,6 +80,19 @@ evaluation:
     - latency_p50_ms
     - latency_p95_ms
     - unsupported_answer_rate
+    - citation_support_rate
+    - no_answer_abstention_accuracy
+    - badcase_rate
+  retrieval_metrics:
+    recall_at_k: [10, 20]
+    ndcg_at_k: [10]
+    mrr_at_k: [10]
+    hard_negative_distinction_rate: true
+    buckets:
+      - formula_alias
+      - grade_or_state
+      - temperature_or_time
+      - unit_conversion
   pareto:
     sweep_thresholds: true
     cost_dimensions:

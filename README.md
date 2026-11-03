@@ -171,16 +171,15 @@ Materials Project、NOMAD、JARVIS 和 Matbench **不直接作为文本向量训
 - **下载渠道**：ModelScope；
 - **初始模式**：bge-m3 dense embedding → candidate top-k → bge-reranker-v2-m3 重排；sparse/multi-vector 模式作为单独消融，不与主结果混合。
 
-环境最低约束：
+环境采用能力检查，不强制精确版本。下面是已验证的参考组合；如果机器已有兼容的 Python、Torch/CUDA 或检索依赖，优先复用已有环境，只安装缺失组件：
 
 | 组件 | 要求 |
 | --- | --- |
-| Python | 3.10 或 3.11 |
-| PyTorch | 2.1+，按实际 NVIDIA CUDA 版本安装匹配 wheel；CPU 可运行但不能与 GPU 时延结果混报 |
-| ModelScope | `modelscope>=1.18` |
-| FlagEmbedding | `FlagEmbedding>=1.3` |
-| Transformers | `transformers>=4.40` |
-| 运行依赖 | `accelerate`、`safetensors`、`sentencepiece`、`numpy`、`pandas`、`pyyaml`、`tqdm`、`scikit-learn` |
+| Python | 3.10+，以模型和依赖实际支持范围为准 |
+| PyTorch/CUDA | 能正常加载 BGE 模型即可；已有 GPU 环境优先复用，CPU 可用于功能检查但不与 GPU 时延结果混报 |
+| ModelScope | 能执行 `snapshot_download` |
+| FlagEmbedding | 能加载 `BGEM3FlagModel` 和 `FlagReranker` |
+| Transformers 等 | 按当前 ModelScope/FlagEmbedding 兼容要求补齐，不要求精确版本 |
 
 安装和下载：
 
@@ -188,6 +187,7 @@ Materials Project、NOMAD、JARVIS 和 Matbench **不直接作为文本向量训
 python -m venv .venv
 \.venv\Scripts\python -m pip install -U pip
 \.venv\Scripts\python -m pip install -e ".[retrieval]"
+\.venv\Scripts\python scripts/check_environment.py
 \.venv\Scripts\python scripts/download_models.py --cache-dir models/modelscope
 ```
 
@@ -208,7 +208,7 @@ $env:HF_HUB_OFFLINE = "1"
 $env:TRANSFORMERS_OFFLINE = "1"
 ```
 
-离线运行不得触发网络回退。运行记录必须保存模型 revision 或快照哈希、Python/PyTorch/CUDA/Transformers/FlagEmbedding/ModelScope 版本、设备、精度（`fp32`/`fp16`/`bf16`）、最大长度、batch size、candidate top-k 和最终 top-k。
+离线运行不得触发网络回退。运行记录必须保存模型 revision 或快照哈希、实际 Python/PyTorch/CUDA/Transformers/FlagEmbedding/ModelScope 版本、设备、精度（`fp32`/`fp16`/`bf16`）、最大长度、batch size、candidate top-k 和最终 top-k。版本用于复现记录，不作为不必要的硬性锁定。
 
 ## 7.4 检索离线评测流程
 

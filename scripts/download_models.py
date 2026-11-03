@@ -29,6 +29,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional ModelScope revision or commit to pin.",
     )
+    parser.add_argument(
+        "--include-onnx",
+        action="store_true",
+        help="Also download ONNX exports. FlagEmbedding does not need them by default.",
+    )
     return parser.parse_args()
 
 
@@ -46,6 +51,8 @@ def main() -> None:
         kwargs = {"model_id": model_id, "cache_dir": str(args.cache_dir)}
         if args.revision:
             kwargs["revision"] = args.revision
+        if not args.include_onnx:
+            kwargs["ignore_patterns"] = ["onnx/*", "*.onnx", "*.onnx_data"]
         path = snapshot_download(**kwargs)
         print(f"{model_id}\t{path}")
 

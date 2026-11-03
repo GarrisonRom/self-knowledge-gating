@@ -469,6 +469,16 @@ results/runs/bge-m3-matsci-v1-seed42/
 - `evaluation.retrieval_metrics` 的 Recall/nDCG/MRR/hard-negative 指标；
 - `evaluation.pareto` 的资源维度和非支配点筛选。
 - `configs/bge_m3_train.yaml`：完整 BGE-M3 训练、测试、输出命名和唯一 seed 配置。
+- `configs/bge_reranker_train.yaml`：完整 bge-reranker-v2-m3 训练、测试、输出命名和唯一 seed 配置。
+
+Reranker 微调使用同一批材料科学 query 的正例和 hard negatives，运行：
+
+```powershell
+\.venv\Scripts\python scripts/train_reranker.py `
+  --config configs/bge_reranker_train.yaml
+```
+
+输出目录固定为 `results/runs/bge-reranker-matsci-v1-seed42/`，包含 `config.yaml`、`manifest.json`、`train.log`、`training_summary.json` 和 `reranker_metrics.jsonl`。测试同时报告冻结 baseline 与微调 reranker 的 top-1、候选集 MRR、候选集 nDCG 和 query-local hard-negative 区分率。
 
 每次运行至少记录 Git commit、配置文件、模型版本、检索器版本、数据版本、随机种子、访问策略、开始/结束时间和失败原因。API key、私有路径和模型权重通过环境变量或本地未跟踪文件注入。
 
@@ -477,6 +487,7 @@ results/runs/bge-m3-matsci-v1-seed42/
 - [ ] 固化 Materials Project manifest、字段映射和属性级容差。
 - [ ] 固定 ModelScope 模型 revision 并完成 bge-m3 / reranker 离线缓存。
 - [ ] 按 `bge_m3_train.yaml` 完成 seed=42 的全量 BGE-M3 训练和测试归档。
+- [ ] 按 `bge_reranker_train.yaml` 完成 seed=42 的全量 reranker 训练和测试归档。
 - [ ] 建立 MatScholar、ChemNLP、PubChem 和 mined recipes 的语料 manifest。
 - [ ] 生成常见、长尾、canary、时间漂移、冲突和歧义切片。
 - [ ] 完成四类敏感性分桶的 Recall、nDCG、MRR 和 hard-negative 指标。

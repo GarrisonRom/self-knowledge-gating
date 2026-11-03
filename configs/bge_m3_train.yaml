@@ -1,0 +1,52 @@
+config_version: 1
+
+project:
+  name: self-knowledge-gating
+  experiment: bge-m3-materials-full-seed42
+
+run:
+  id: bge-m3-matsci-v1-seed42
+  output_dir: results/runs/bge-m3-matsci-v1-seed42
+  overwrite: false
+
+seed: 42
+
+data:
+  train_pairs: data/processed/pairs_train.jsonl
+  dev_pairs: data/processed/pairs_dev.jsonl
+  test_pairs: data/processed/pairs_test.jsonl
+  max_train_pairs: null
+  dev_quick_limit: 300
+
+models:
+  base_encoder: models/modelscope/models/BAAI--bge-m3/snapshots/master
+  finetuned_encoder: models/finetuned/bge-m3-matsci-v1-seed42
+
+training:
+  epochs: 1.0
+  batch_pairs: 32
+  gradient_accumulation: 2
+  learning_rate: 0.00001
+  weight_decay: 0.01
+  warmup_fraction: 0.05
+  temperature: 0.05
+  query_max_length: 128
+  passage_max_length: 512
+  eval_every_steps: 200
+  dataloader_workers: 0
+  precision: bf16
+  gradient_checkpointing: true
+  deterministic_algorithms: true
+
+evaluation:
+  split: test
+  batch_size: 32
+  query_max_length: 128
+  passage_max_length: 512
+  include_baseline: true
+  metrics:
+    - recall_at_10
+    - recall_at_20
+    - ndcg_at_10
+    - mrr_at_10
+    - hard_negative_distinction

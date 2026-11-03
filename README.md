@@ -421,6 +421,30 @@ python -m venv .venv
 
 `SelfKnowledgeGatingPipeline.run()` 是统一编排入口。它把“路由动作”和“最终结果”分开记录：检索路由成功后，最终结果是 `answer`；检索失败或冲突未解决时，最终结果是 `abstain`。
 
+## 16. 大规模 BGE 训练与测试
+
+BGE-M3 的正式训练使用完整材料科学训练集，不使用多种子。唯一随机种子固定为 `42`，所有训练和测试设置由 [`configs/bge_m3_train.yaml`](configs/bge_m3_train.yaml) 管理。
+
+```powershell
+\.venv\Scripts\python scripts/train_embedding.py `
+  --config configs/bge_m3_train.yaml
+```
+
+默认实验命名为 `bge-m3-matsci-v1-seed42`，所有结果必须写入：
+
+```text
+results/runs/bge-m3-matsci-v1-seed42/
+├── config.yaml              # 实际使用的配置快照
+├── manifest.json            # seed、数据哈希、模型、环境和 Git commit
+├── train.log                # 完整训练日志
+├── training_summary.json    # 训练步数、耗时和输出模型
+└── retrieval_metrics.jsonl  # baseline 与 fine-tuned 的测试指标
+```
+
+训练脚本默认使用全部 `pairs_train.jsonl`，在训练结束后自动对原始 `bge-m3` 和 `bge-m3-matsci-v1-seed42` 运行同一测试集。测试指标包括 Recall@10/20、nDCG@10、MRR@10 和 query-local hard-negative 区分率。硬负样本区分率定义为同一 query 下 `score(positive) > score(hard_negative)` 的比例。
+
+脚本会拒绝覆盖已有 run 目录和已有模型目录；重复实验需要显式修改 `run.id` 和输出路径。模型权重、数据和虚拟环境不提交到 Git。
+
 模型下载完成后，用同一套 pipeline 做 BGE smoke：
 
 ```powershell
@@ -431,7 +455,7 @@ python -m venv .venv
 
 该入口同时验证 dense candidate retrieval、reranker 排序、证据验证、冲突裁决和最终 `answer/abstain` 结果；它不代表正式指标，正式指标必须读取版本化语料和标注 manifest。
 
-## 16. 配置与复现
+## 17. 配置与复现
 
 `configs/base.yaml` 已预留以下设置：
 
@@ -444,13 +468,15 @@ python -m venv .venv
 - `conflict` 的声明级裁决字段与固定信任基线；
 - `evaluation.retrieval_metrics` 的 Recall/nDCG/MRR/hard-negative 指标；
 - `evaluation.pareto` 的资源维度和非支配点筛选。
+- `configs/bge_m3_train.yaml`：完整 BGE-M3 训练、测试、输出命名和唯一 seed 配置。
 
 每次运行至少记录 Git commit、配置文件、模型版本、检索器版本、数据版本、随机种子、访问策略、开始/结束时间和失败原因。API key、私有路径和模型权重通过环境变量或本地未跟踪文件注入。
 
-## 17. 路线图
+## 18. 路线图
 
 - [ ] 固化 Materials Project manifest、字段映射和属性级容差。
 - [ ] 固定 ModelScope 模型 revision 并完成 bge-m3 / reranker 离线缓存。
+- [ ] 按 `bge_m3_train.yaml` 完成 seed=42 的全量 BGE-M3 训练和测试归档。
 - [ ] 建立 MatScholar、ChemNLP、PubChem 和 mined recipes 的语料 manifest。
 - [ ] 生成常见、长尾、canary、时间漂移、冲突和歧义切片。
 - [ ] 完成四类敏感性分桶的 Recall、nDCG、MRR 和 hard-negative 指标。

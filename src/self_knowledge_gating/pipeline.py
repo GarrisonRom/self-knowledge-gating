@@ -52,7 +52,11 @@ class SelfKnowledgeGatingPipeline:
     def run(self, question: Question) -> PipelineResult:
         started = perf_counter()
         signals = self.signal_estimator.estimate(question)
-        route_plan = self.policy.route(signals)
+        try:
+            route_plan = self.policy.route(signals, question)
+        except TypeError:
+            # Preserve compatibility with older custom policies.
+            route_plan = self.policy.route(signals)
         route = route_plan.action
         base_metadata = {
             "route_reason_code": route_plan.reason_code.value if route_plan.reason_code else None,
@@ -109,15 +113,27 @@ class SelfKnowledgeGatingPipeline:
             question, grounded_answer, evidence, verification
         )
         conflict = self.adjudicator.adjudicate(parametric_answer, grounded_answer, evidence)
-        final_plan = self.policy.finalize_retrieval(signals, evidence, verification, conflict)
+        selected_answer = (
+            parametric_answer
+            if conflict.status == "resolved" and conflict.winner == "parameter"
+            else grounded_answer
+        )
+        selected_verification = (
+            self.verifier.verify(selected_answer, evidence)
+            if selected_answer is not grounded_answer
+            else verification
+        )
+        final_plan = self.policy.finalize_retrieval(
+            signals, evidence, selected_verification, conflict
+        )
         metadata = dict(base_metadata)
         metadata["retrieval_used"] = True
         metadata["parametric_answer"] = parametric_answer.text
         metadata["grounded_answer"] = grounded_answer.text
         metadata["grounded_answer_revised"] = revised
 
-        original_verification = verification
-        answer = grounded_answer if final_plan.action == Action.ANSWER else None
+        original_verification = selected_verification
+        answer = selected_answer if final_plan.action == Action.ANSWER else None
         outcome = final_plan.action
         reason_code = final_plan.reason_code
         if (
@@ -127,7 +143,7 @@ class SelfKnowledgeGatingPipeline:
             and signals.answerability >= 0.40
         ):
             projected = self._project_supported_claims(
-                parametric_answer, grounded_answer, evidence, signals
+                parametric_answer, selected_answer, evidence, signals
             )
             if projected is not None:
                 answer, verification = projected

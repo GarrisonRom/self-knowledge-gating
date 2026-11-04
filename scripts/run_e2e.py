@@ -19,9 +19,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import time
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from self_knowledge_gating.bge_retrieval import ComposableRetriever
 from self_knowledge_gating.conflict import RuleBasedConflictAdjudicator
@@ -32,6 +36,7 @@ from self_knowledge_gating.probes import PROBE_POINTS, ProbeRecorder
 from self_knowledge_gating.schemas import Evidence, Question
 from self_knowledge_gating.signals import ProbeSignalEstimator
 from self_knowledge_gating.verification import EmbeddingEvidenceVerifier
+from baselines import build_conflict_adjudicator, build_policy
 
 ROOT = "/root/autodl-tmp/self-knowledge-gating"
 MODELS = f"{ROOT}/models/modelscope/models"
@@ -130,9 +135,15 @@ def main() -> None:
     ap.add_argument("--corpus", type=int, default=8000)
     ap.add_argument("--hidden-states", action="store_true")
     ap.add_argument("--run-id", default=None)
+    ap.add_argument("--routing-baseline", default="calibrated-boundary-gate")
+    ap.add_argument("--conflict-baseline", default="claim-level")
+    ap.add_argument("--conformal-risk-target", type=float, default=0.05)
     args = ap.parse_args()
 
-    run_id = args.run_id or time.strftime("e2e-%Y%m%d-%H%M%S")
+    run_id = args.run_id or (
+        f"e2e-{args.routing_baseline}-{args.conflict_baseline}-"
+        + time.strftime("%Y%m%d-%H%M%S")
+    )
     run_dir = f"{ROOT}/results/runs/{run_id}"
     recorder = ProbeRecorder(run_dir)
     print("run_dir:", run_dir, flush=True)
@@ -187,10 +198,17 @@ def main() -> None:
     estimator = ProbeSignalEstimator(probe_fn)
     verifier = EmbeddingEvidenceVerifier(
         FT_ENCODER, threshold=0.55, recorder=recorder)
+    policy_kwargs = {}
+    if args.routing_baseline == "conformal-abstention":
+        policy_kwargs["risk_target"] = args.conformal_risk_target
+    policy = build_policy(args.routing_baseline, **policy_kwargs)
+    if args.conflict_baseline != "claim-level":
+        policy.allow_resolved_conflict = True
     pipeline = SelfKnowledgeGatingPipeline(
         retriever=retriever, signal_estimator=estimator,
         answerer=answerer, verifier=verifier,
-        adjudicator=RuleBasedConflictAdjudicator(), policy=GatePolicy(),
+        adjudicator=build_conflict_adjudicator(args.conflict_baseline),
+        policy=policy,
         top_k=5)
 
     questions = make_questions(answerer, args.n)
@@ -278,6 +296,16 @@ def main() -> None:
         "probe_records": recorder.records,
         "wall_time_s": round(time.time() - t0, 1),
         "models": {"encoder": FT_ENCODER, "reranker": RERANKER, "llm": LLM},
+        "routing_baseline": args.routing_baseline,
+        "conflict_baseline": args.conflict_baseline,
+        "resource_budget": {
+            "candidate_top_k": 40,
+            "final_top_k": 5,
+            "encoder_batch_size": 16,
+            "reranker_batch_size": 8,
+            "encoder_max_length": 512,
+            "reranker_max_length": 512,
+        },
     }
     with open(os.path.join(run_dir, "summary.json"), "w",
               encoding="utf-8") as f:

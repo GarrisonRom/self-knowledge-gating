@@ -356,6 +356,61 @@ context_tokens, output_tokens, latency_ms, failure_label
 | [Mitigating LLM Hallucinations via Conformal Abstention](https://arxiv.org/abs/2405.01563), Yadkori et al., 2024 | 用采样相似度和 conformal 校准控制幻觉风险与拒答率。 |
 | [The Materials Project](https://doi.org/10.1063/1.4812323), Jain et al., 2013 | 提供可版本化、可脚本比对的材料属性来源。 |
 | [SciQAG](https://arxiv.org/abs/2405.09939), Wan et al., 2024 | 支持自动生成科学问答和细粒度评测，但本项目用确定性属性评测替代开放式 LLM 判定。 |
+| [Fine Tuning vs. Retrieval Augmented Generation for Less Popular Knowledge](https://arxiv.org/abs/2403.01432), Soudani, Kanoulas & Hasibi, 2024 | 直接比较低频知识上的 FT 与 RAG；报告低频实体上 RAG 通常优于 FT，并提出 Stimulus RAG。作为本项目长尾材料实验的核心对照。 |
+| [LLM Internal States Reveal Hallucination Risk Faced With a Query](https://arxiv.org/abs/2407.03282), Ji et al., 2024 | 用内部层、神经元和 token 状态在生成前估计 hallucination risk，支持本项目的 probe-based boundary signals。 |
+| [LLMs can learn self-restraint through iterative self-reflection](https://arxiv.org/abs/2405.13022), Piché et al., 2024 | 用自评估和 utility 训练模型学会 abstain；作为拒答训练路线的对照，不等同于本项目的后验门控。 |
+| [Know2Guess](https://arxiv.org/abs/2606.26101), Meng et al., 2026 | contamination-aware、多区域 knowledge-boundary benchmark，分离 answer、unknown、abstention 和 generic refusal。作为四状态评测设计参考。 |
+| [Interpretable Uncertainty for Adaptive Retrieval and Reasoning in Question Answering](https://arxiv.org/abs/2607.07380), Dey, Ounis & McDonald, 2026 | 从内部表示区分 knowledge insufficiency 与 ambiguity/conflict，并据此触发检索或额外推理，是当前最接近的可解释门控工作之一。 |
+| [Know Before You Fetch](https://arxiv.org/abs/2606.29959), Dong et al., 2026 | 将 adaptive RAG 形式化为 calibrated retrieval-budget allocation，在 closed-book、不同 k 和 abstain 间分配预算。支持本项目的 Pareto frontier 设计。 |
+| [When Should Active RAG Retrieve?](https://arxiv.org/abs/2607.24010), Qian et al., 2026 | 强调实际 retrieval usage、预算迁移误差、harm rate、成本分解和 utility frontier，不能只报告 accuracy。 |
+| [Trust or Abstain? A Self-Aware RAG Approach](https://arxiv.org/abs/2605.18792), Zhu et al., 2026 | SABER 在 PK/CK 冲突下做 trust-PK、trust-CK、trust-either、abstain 四格决策；与本项目冲突裁决和拒答最接近。 |
+| [GRACE](https://arxiv.org/abs/2601.04525), Zhao et al., 2026 | 用强化学习同时学习 grounded response 和 evidence-insufficient abstention；作为训练型拒答基线。 |
+| [Geometry-Calibrated Conformal Abstention](https://arxiv.org/abs/2604.27914), Xu et al., 2026 | 用表示几何校准 conformal abstention，提供 coverage/correctness 约束；作为后验统计拒答基线。 |
+
+其中 2026 年条目目前按 arXiv 预印本记录，复现时要区分“方法启发”和“已验证结论”。本项目不会把这些论文的结果直接移植到材料科学数据上。
+
+## 13.1 Baseline 复现协议
+
+可运行基线代码集中在 `baselines/`，主实验通过 `scripts/run_e2e.py` 的参数选择基线。所有基线必须使用同一模型、语料、问题集合、prompt、probe budget、candidate top-k、最终 top-k 和时延统计。
+
+路由基线：
+
+```text
+always-answer
+always-rag
+uncalibrated-confidence
+complexity-router
+conformal-abstention
+calibrated-boundary-gate
+```
+
+冲突基线：
+
+```text
+trust-parameter
+trust-retrieval
+majority-rule
+claim-level
+```
+
+复现实验配置见 `configs/baselines.yaml`。推荐命名：
+
+```text
+results/runs/e2e-<routing-baseline>-<conflict-baseline>-<timestamp>/
+```
+
+记录至少包括 `summary.json`、`results.jsonl`、`probes.jsonl`、`registry.json` 和 `PROBES.md`。训练型论文方法（例如 Self-RAG、GRACE、SABER）只有在实现其训练/校准过程后，才能标记为 reproduced；当前仓库先提供同一评测协议下的推理基线和接口。
+
+示例：
+
+```powershell
+python scripts/run_e2e.py --n 30 --corpus 8000 `
+  --routing-baseline always-rag `
+  --conflict-baseline trust-retrieval `
+  --run-id e2e-always-rag-trust-retrieval-001
+```
+
+四组合 encoder/reranker 只通过 `RAG_ENCODER_PATH`、`RAG_RERANKER_PATH`、`RAG_ENCODER_TYPE` 和 `RAG_RERANKER_TYPE` 替换，基线策略和模型组合可以正交交叉。
 
 ## 14. 目录结构
 
@@ -366,6 +421,10 @@ context_tokens, output_tokens, latency_ms, failure_label
 ├── pyproject.toml
 ├── configs/
 │   └── base.yaml
+├── baselines/
+│   ├── policies.py
+│   ├── conflicts.py
+│   └── registry.py
 ├── data/
 │   ├── raw/
 │   ├── interim/
@@ -397,6 +456,7 @@ context_tokens, output_tokens, latency_ms, failure_label
 目录职责：
 
 - `configs/base.yaml`：四状态、四动作、材料切片、校准、冲突和 Pareto 维度的无密钥基线配置；
+- `baselines/`：与主 Pipeline 契约兼容的路由和冲突复现基线；
 - `data/`：原始、处理中间、可读取数据和外部语料分层，真实内容默认不提交；
 - `src/`：数据契约、信号估计、校准、检索接口、冲突裁决、门控策略和评测实现；
 - `scripts/`：数据准备、运行实验、评测和结果汇总入口；

@@ -1,0 +1,37 @@
+config_version: 1
+
+run:
+  seed: 42
+  question_count: 30
+  corpus_size: 8000
+  output_root: results/runs
+
+routing:
+  - always-answer
+  - always-rag
+  - uncalibrated-confidence
+  - complexity-router
+  - conformal-abstention
+  - calibrated-boundary-gate
+
+conflict:
+  - trust-parameter
+  - trust-retrieval
+  - majority-rule
+  - claim-level
+
+resources:
+  candidate_top_k: 40
+  final_top_k: 5
+  encoder_batch_size: 16
+  reranker_batch_size: 8
+  encoder_max_length: 512
+  reranker_max_length: 512
+
+reproduction:
+  same_questions: true
+  same_corpus: true
+  same_llm: true
+  same_prompt: true
+  same_probe_budget: true
+  same_retrieval_budget: true

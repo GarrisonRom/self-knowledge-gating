@@ -248,12 +248,10 @@ class SelfKnowledgeGatingPipeline:
     @staticmethod
     def _contains_quantitative_claim(text: str) -> bool:
         """Keep unverified numeric/unit claims out of the parametric fallback."""
-        return bool(
-            re.search(
-                r"(?:\d(?:[\d,.]*|\s*\^\s*\d+)\s*(?:%|[A-Za-zµμΩ]+(?:\s*[·./-]\s*[A-Za-z0-9µμΩ^-]+)*))",
-                text,
-            )
-        )
+        # This deliberately catches LaTeX forms such as ``$10^3$`` as well as
+        # ordinary values. A false positive is preferable to presenting an
+        # unverified scientific number as a grounded answer.
+        return bool(re.search(r"\d", text))
 
     def _revise_if_needed(self, question, answer, evidence, verification):
         """Give answerers with a revision hook one evidence-constrained retry."""

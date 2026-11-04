@@ -103,12 +103,16 @@ class SelfKnowledgeGatingPipeline:
         evidence = tuple(self.retriever.search(question, top_k=self.top_k))
         grounded_answer = self.answerer.generate(question, evidence)
         verification = self.verifier.verify(grounded_answer, evidence)
+        grounded_answer, verification, revised = self._revise_if_needed(
+            question, grounded_answer, evidence, verification
+        )
         conflict = self.adjudicator.adjudicate(parametric_answer, grounded_answer, evidence)
         final_plan = self.policy.finalize_retrieval(signals, evidence, verification, conflict)
         metadata = dict(base_metadata)
         metadata["retrieval_used"] = True
         metadata["parametric_answer"] = parametric_answer.text
         metadata["grounded_answer"] = grounded_answer.text
+        metadata["grounded_answer_revised"] = revised
 
         return self._result(
             question=question,
@@ -123,6 +127,19 @@ class SelfKnowledgeGatingPipeline:
             started=started,
             metadata=metadata,
         )
+
+    def _revise_if_needed(self, question, answer, evidence, verification):
+        """Give answerers with a revision hook one evidence-constrained retry."""
+        if verification.evidence_sufficiency >= self.policy.thresholds.evidence_sufficiency:
+            return answer, verification, False
+        revise = getattr(self.answerer, "revise_grounded", None)
+        if revise is None or not evidence:
+            return answer, verification, False
+        revised_answer = revise(question, answer, evidence, verification)
+        revised_verification = self.verifier.verify(revised_answer, evidence)
+        if revised_verification.evidence_sufficiency > verification.evidence_sufficiency:
+            return revised_answer, revised_verification, True
+        return answer, verification, False
 
     @staticmethod
     def _result(

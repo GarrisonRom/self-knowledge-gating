@@ -381,6 +381,7 @@ context_tokens, output_tokens, latency_ms, failure_label
 │       ├── signals.py
 │       ├── policy.py
 │       ├── retrieval.py
+│       ├── retrieval_components.py
 │       ├── bge_retrieval.py
 │       ├── generation.py
 │       ├── verification.py
@@ -420,6 +421,59 @@ python -m venv .venv
 - `ConflictAdjudicator`：接入更强的来源可靠性、时间和冲突裁决器。
 
 `SelfKnowledgeGatingPipeline.run()` 是统一编排入口。它把“路由动作”和“最终结果”分开记录：检索路由成功后，最终结果是 `answer`；检索失败或冲突未解决时，最终结果是 `abstain`。
+
+## 15.1 可替换 Encoder / Reranker 接口
+
+检索编排不绑定某一组模型。`ComposableRetriever` 接收两个独立组件：
+
+```text
+DenseEncoder.encode(texts) -> matrix[n_documents, embedding_dim]
+PairReranker.score(query, passages) -> scores[n_passages]
+```
+
+仓库内置四个适配器：
+
+| 类型 | Encoder | Reranker |
+| --- | --- | --- |
+| `flag_embedding` | `BGEM3FlagModel`，适合 BGE-M3 | `FlagReranker`，适合 bge-reranker-v2-m3 |
+| `transformers` | `AutoModel`，支持 CLS/mean pooling | `AutoModelForSequenceClassification` |
+
+因此可以独立替换 encoder 或 reranker：
+
+```python
+from self_knowledge_gating.bge_retrieval import ComposableRetriever
+
+retriever = ComposableRetriever.from_model_paths(
+    encoder_path="models/finetuned/bge-m3-matsci-v1-seed42",
+    reranker_path="models/finetuned/bge-reranker-v2-m3-matsci-v1-seed42",
+    encoder_type="flag_embedding",
+    reranker_type="flag_embedding",
+    corpus=corpus,
+    candidate_top_k=40,
+    final_top_k=5,
+)
+```
+
+也可以把任意实现了 `encode` 和 `score` 的自定义对象直接传给 `ComposableRetriever(encoder=..., reranker=...)`。检索结果会在 metadata 中记录实际 encoder/reranker 名称，方便四组合实验审计。
+
+远程网页服务 `scripts/rag_server.py` 通过环境变量选择组合，网页端无需修改：
+
+```text
+RAG_ENCODER_PATH
+RAG_RERANKER_PATH
+RAG_ENCODER_TYPE=flag_embedding|transformers
+RAG_RERANKER_TYPE=flag_embedding|transformers
+RAG_ENCODER_DEVICE=auto|cuda|cpu
+RAG_RERANKER_DEVICE=auto|cuda|cpu
+RAG_ENCODER_PRECISION=auto|bf16|fp16|fp32
+RAG_RERANKER_PRECISION=auto|bf16|fp16|fp32
+RAG_ENCODER_POOLING=cls|mean
+RAG_ENCODER_QUERY_PREFIX
+RAG_CANDIDATE_TOP_K
+RAG_FINAL_TOP_K
+```
+
+本地 `rag-platform` 只负责通过 SSH 隧道代理 `/chat`，不保存模型权重；`config.local.json` 只放本机 SSH 密码并由 `.gitignore` 排除，不提交到仓库。
 
 ## 16. 大规模 BGE 训练与测试
 

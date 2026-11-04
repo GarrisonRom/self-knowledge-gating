@@ -23,7 +23,7 @@ import time
 from dataclasses import asdict
 from typing import Any
 
-from self_knowledge_gating.bge_retrieval import BGERetriever
+from self_knowledge_gating.bge_retrieval import ComposableRetriever
 from self_knowledge_gating.conflict import RuleBasedConflictAdjudicator
 from self_knowledge_gating.llm import QwenAnswerer
 from self_knowledge_gating.pipeline import SelfKnowledgeGatingPipeline
@@ -35,8 +35,10 @@ from self_knowledge_gating.verification import EmbeddingEvidenceVerifier
 
 ROOT = "/root/autodl-tmp/self-knowledge-gating"
 MODELS = f"{ROOT}/models/modelscope/models"
-FT_ENCODER = f"{ROOT}/models/finetuned/bge-m3-matsci-v1"
-RERANKER = f"{MODELS}/BAAI--bge-reranker-v2-m3/snapshots/master"
+FT_ENCODER = os.environ.get("RAG_ENCODER_PATH", f"{ROOT}/models/finetuned/bge-m3-matsci-v1-seed42")
+RERANKER = os.environ.get("RAG_RERANKER_PATH", f"{ROOT}/models/finetuned/bge-reranker-v2-m3-matsci-v1-seed42")
+ENCODER_TYPE = os.environ.get("RAG_ENCODER_TYPE", "flag_embedding")
+RERANKER_TYPE = os.environ.get("RAG_RERANKER_TYPE", "flag_embedding")
 LLM = f"{MODELS}/Qwen--Qwen3-8B/snapshots/master"
 INTERIM = f"{ROOT}/data/interim/openalex_clean.jsonl"
 TEST_PAIRS = f"{ROOT}/data/processed/pairs_test.jsonl"
@@ -139,10 +141,32 @@ def main() -> None:
     corpus = load_corpus(args.corpus)
     print(f"corpus: {len(corpus)} evidence docs", flush=True)
 
-    retriever = BGERetriever(
-        encoder_path=FT_ENCODER, reranker_path=RERANKER, corpus=corpus,
-        candidate_top_k=40, final_top_k=5, batch_size=16, max_length=512,
-        use_fp16=True)
+    encoder_options = {"name": FT_ENCODER}
+    reranker_options = {"name": RERANKER}
+    if ENCODER_TYPE.casefold().replace("-", "_") in {"flag_embedding", "flag", "bge_m3"}:
+        encoder_options["use_fp16"] = True
+    else:
+        encoder_options.update({"device": "auto", "precision": "auto", "pooling": "cls"})
+    if RERANKER_TYPE.casefold().replace("-", "_") in {"flag_embedding", "flag", "bge_reranker"}:
+        reranker_options["use_fp16"] = True
+    else:
+        reranker_options.update({"device": "auto", "precision": "auto"})
+
+    retriever = ComposableRetriever.from_model_paths(
+        encoder_path=FT_ENCODER,
+        reranker_path=RERANKER,
+        encoder_type=ENCODER_TYPE,
+        reranker_type=RERANKER_TYPE,
+        encoder_options=encoder_options,
+        reranker_options=reranker_options,
+        corpus=corpus,
+        candidate_top_k=40,
+        final_top_k=5,
+        encoder_batch_size=16,
+        reranker_batch_size=8,
+        encoder_max_length=512,
+        reranker_max_length=512,
+    )
     answerer = QwenAnswerer(LLM, recorder=recorder,
                             hidden_states=args.hidden_states)
     print(f"models loaded in {time.time()-t0:.0f}s", flush=True)

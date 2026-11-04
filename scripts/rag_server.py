@@ -191,6 +191,8 @@ def handle_chat(question_text: str) -> dict:
         "latency_ms": round(result.usage.latency_ms, 1),
         "parametric_answer": result.metadata.get("parametric_answer"),
         "grounded_answer": result.metadata.get("grounded_answer"),
+        "partial_answer": bool(result.metadata.get("partial_answer", False)),
+        "original_verification": result.metadata.get("original_verification"),
     }
 
 

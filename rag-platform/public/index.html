@@ -99,6 +99,9 @@ function renderAssistant(d) {
   let html = "";
   if (d.outcome === "answer" && d.answer) {
     html += `<div>${esc(d.answer)}</div>`;
+    if (d.partial_answer) {
+      html += `<div class="sys" style="margin-top:8px">仅展示当前证据直接支持的内容，其余内容未确认。</div>`;
+    }
   } else {
     html += `<div class="sys">系统选择拒答（${esc(d.reason_code || "UNKNOWN")}）。`
       + `下方为检索到的相关文献，供你自行判断。</div>`;

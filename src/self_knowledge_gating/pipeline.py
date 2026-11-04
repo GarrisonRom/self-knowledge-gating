@@ -15,6 +15,7 @@ from .schemas import (
     Answer,
     BoundarySignals,
     ConflictAssessment,
+    Claim,
     Evidence,
     PipelineResult,
     Question,
@@ -114,18 +115,79 @@ class SelfKnowledgeGatingPipeline:
         metadata["grounded_answer"] = grounded_answer.text
         metadata["grounded_answer_revised"] = revised
 
+        original_verification = verification
+        answer = grounded_answer if final_plan.action == Action.ANSWER else None
+        outcome = final_plan.action
+        reason_code = final_plan.reason_code
+        if (
+            outcome == Action.ABSTAIN
+            and reason_code == ReasonCode.INSUFFICIENT_EVIDENCE
+            and conflict.status == "none"
+            and signals.answerability >= 0.40
+        ):
+            projected = self._project_supported_claims(grounded_answer, evidence)
+            if projected is not None:
+                answer, verification = projected
+                outcome = Action.ANSWER
+                reason_code = None
+                metadata["partial_answer"] = True
+                metadata["original_verification"] = {
+                    "evidence_sufficiency": original_verification.evidence_sufficiency,
+                    "supported_claims": original_verification.supported_claims,
+                    "total_claims": original_verification.total_claims,
+                    "unsupported_claims": list(original_verification.unsupported_claims),
+                }
+
         return self._result(
             question=question,
             route=route,
-            outcome=final_plan.action,
-            reason_code=final_plan.reason_code,
-            answer=grounded_answer if final_plan.action == Action.ANSWER else None,
+            outcome=outcome,
+            reason_code=reason_code,
+            answer=answer,
             signals=signals,
             evidence=evidence,
             verification=verification,
             conflict=conflict,
             started=started,
             metadata=metadata,
+        )
+
+    def _project_supported_claims(self, answer, evidence):
+        """Return a transparent answer containing only verified claim fragments."""
+        details = getattr(self.verifier, "last_details", None) or []
+        supported_details = [item for item in details if item.get("supported")]
+        if not supported_details:
+            return None
+        claims_by_key = {claim.key: claim for claim in answer.claims}
+        projected_claims = []
+        fragments = []
+        for detail in supported_details:
+            claim = claims_by_key.get(detail.get("claim_key"))
+            if claim is None:
+                continue
+            evidence_id = detail.get("best_evidence_id")
+            projected_claims.append(
+                Claim(
+                    key=claim.key,
+                    value=claim.value,
+                    source_refs=(evidence_id,) if evidence_id else claim.source_refs,
+                )
+            )
+            fragments.append(f"{claim.key}: {claim.value}")
+        if not projected_claims:
+            return None
+        text = (
+            "根据当前检索证据，能够直接支持的是："
+            + "；".join(fragments)
+            + "。其余相关内容未在当前证据中得到直接确认。"
+        )
+        from .schemas import VerificationResult
+
+        return Answer(text=text, claims=tuple(projected_claims)), VerificationResult(
+            evidence_sufficiency=1.0,
+            supported_claims=len(projected_claims),
+            total_claims=len(projected_claims),
+            unsupported_claims=(),
         )
 
     def _revise_if_needed(self, question, answer, evidence, verification):

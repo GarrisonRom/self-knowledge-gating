@@ -110,6 +110,31 @@ def make_questions(answerer: QwenAnswerer, n: int) -> list[Question]:
     return out
 
 
+def make_boundary_questions(path: str, n: int) -> list[Question]:
+    """Load controlled boundary rows without exposing expected labels to prompts."""
+    rows = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            rows.append(json.loads(line))
+    rows = rows[:n]
+    return [
+        Question(
+            text=row["question"],
+            question_id=row["sample_id"],
+            metadata={
+                "source_work_id": row.get("source_work_id"),
+                "venue": row.get("venue"),
+                "year": row.get("year"),
+                "expected_boundary_state": row["boundary_state"],
+                "access_condition": row["access_condition"],
+                "freshness_condition": row["freshness_condition"],
+                "matched_group_id": row.get("matched_group_id"),
+            },
+        )
+        for row in rows
+    ]
+
+
 def serialize_result(qid: str, result) -> dict[str, Any]:
     return {
         "question_id": qid,
@@ -138,6 +163,7 @@ def main() -> None:
     ap.add_argument("--routing-baseline", default="calibrated-boundary-gate")
     ap.add_argument("--conflict-baseline", default="claim-level")
     ap.add_argument("--conformal-risk-target", type=float, default=0.05)
+    ap.add_argument("--boundary-benchmark", default=None)
     args = ap.parse_args()
 
     run_id = args.run_id or (
@@ -211,7 +237,11 @@ def main() -> None:
         policy=policy,
         top_k=5)
 
-    questions = make_questions(answerer, args.n)
+    questions = (
+        make_boundary_questions(args.boundary_benchmark, args.n)
+        if args.boundary_benchmark
+        else make_questions(answerer, args.n)
+    )
     print(f"questions: {len(questions)}", flush=True)
 
     results_path = os.path.join(run_dir, "results.jsonl")
@@ -227,6 +257,10 @@ def main() -> None:
                 "source_work_id": question.metadata["source_work_id"],
                 "venue": question.metadata["venue"],
                 "year": question.metadata["year"],
+                "expected_boundary_state": question.metadata.get("expected_boundary_state"),
+                "access_condition": question.metadata.get("access_condition"),
+                "freshness_condition": question.metadata.get("freshness_condition"),
+                "matched_group_id": question.metadata.get("matched_group_id"),
             })
             # pre-run probes so 'signals' probe sees the same pass
             probe_fn(question)
@@ -298,6 +332,7 @@ def main() -> None:
         "models": {"encoder": FT_ENCODER, "reranker": RERANKER, "llm": LLM},
         "routing_baseline": args.routing_baseline,
         "conflict_baseline": args.conflict_baseline,
+        "boundary_benchmark": args.boundary_benchmark,
         "resource_budget": {
             "candidate_top_k": 40,
             "final_top_k": 5,

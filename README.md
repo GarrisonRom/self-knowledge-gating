@@ -105,6 +105,25 @@ flowchart LR
 | 训练动态层 | gradient norm、gradient cosine、update direction、Fisher/参数重要性、loss/gradient variance | 微调和校准如何改变边界信号，哪些更新造成泛化或退化？ | seed=42 训练轨迹、更新前后信号和 OOD 对比 |
 | 系统层 | gate、retrieval、reranker、evidence verifier、conflict adjudicator、LLM 输出 | 局部信号是否改善 coverage-risk-cost-latency frontier？ | 四组合、预算匹配、失败归因和 Pareto frontier |
 
+第一阶段的可复现实验入口：
+
+```powershell
+python scripts/build_boundary_benchmark.py `
+  --config configs/interpretability_probe.yaml
+
+python scripts/run_e2e.py --n 1200 --corpus 8000 `
+  --boundary-benchmark data/processed/boundary_benchmark_seed42.jsonl `
+  --routing-baseline calibrated-boundary-gate `
+  --conflict-baseline claim-level `
+  --run-id boundary-probes-seed42
+
+python scripts/analyze_probe_runs.py `
+  --run-dir results/runs/boundary-probes-seed42 `
+  --benchmark data/processed/boundary_benchmark_seed42.jsonl
+```
+
+第一阶段只回答信号层问题：四类状态的 probe 分布、校准和路由差异。期望状态只进入事后分析，不进入模型 prompt；因此 `no_access` 和 `stale` 的可分性会被诚实地测出来，而不是由 metadata 泄漏。
+
 当前列表中的 `P(IK)`、`P(True)`、语义熵、采样一致性、logprob 和 hidden states 足够作为**信号层起点**，但不能单独支撑机制解释。表示层必须加入 layer/token 分析；因果层必须加入 activation patching 或 ablation；训练动态层作为微调和校准的解释工具，不把梯度直接当成单次推理的知识边界信号。
 
 ### 四类边界的受控干预
@@ -490,7 +509,11 @@ python scripts/run_e2e.py --n 30 --corpus 8000 `
 ├── .gitignore
 ├── pyproject.toml
 ├── configs/
-│   └── base.yaml
+│   ├── base.yaml
+│   ├── baselines.yaml
+│   ├── interpretability_probe.yaml
+│   ├── bge_m3_train.yaml
+│   └── bge_reranker_train.yaml
 ├── baselines/
 │   ├── policies.py
 │   ├── conflicts.py
@@ -502,7 +525,10 @@ python scripts/run_e2e.py --n 30 --corpus 8000 `
 │   └── external/
 ├── notebooks/
 ├── scripts/
+│   ├── build_boundary_benchmark.py
+│   ├── analyze_probe_runs.py
 │   ├── download_models.py
+│   ├── run_e2e.py
 │   └── run_bge_smoke.py
 ├── src/
 │   └── self_knowledge_gating/

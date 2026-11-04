@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from time import perf_counter
 from typing import Any, Mapping
 
@@ -175,7 +176,11 @@ class SelfKnowledgeGatingPipeline:
                         claim.key for claim in answer.claims
                     ) or ("unverified_grounded_answer",),
                 )
-            if signals.answerability >= 0.70 and parametric_answer.text.strip():
+            if (
+                signals.answerability >= 0.70
+                and parametric_answer.text.strip()
+                and not self._contains_quantitative_claim(parametric_answer.text)
+            ):
                 return Answer(
                     text=(
                         parametric_answer.text
@@ -238,6 +243,16 @@ class SelfKnowledgeGatingPipeline:
             supported_claims=len(projected_claims),
             total_claims=len(projected_claims),
             unsupported_claims=(),
+        )
+
+    @staticmethod
+    def _contains_quantitative_claim(text: str) -> bool:
+        """Keep unverified numeric/unit claims out of the parametric fallback."""
+        return bool(
+            re.search(
+                r"(?:\d(?:[\d,.]*|\s*\^\s*\d+)\s*(?:%|[A-Za-zµμΩ]+(?:\s*[·./-]\s*[A-Za-z0-9µμΩ^-]+)*))",
+                text,
+            )
         )
 
     def _revise_if_needed(self, question, answer, evidence, verification):

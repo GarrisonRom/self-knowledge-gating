@@ -159,6 +159,37 @@ class SelfKnowledgeGatingPipeline:
         details = getattr(self.verifier, "last_details", None) or []
         supported_details = [item for item in details if item.get("supported")]
         if not supported_details:
+            max_relevance = max((item.relevance for item in evidence), default=0.0)
+            if max_relevance >= 0.60 and answer.text.strip():
+                return Answer(
+                    text=(
+                        answer.text
+                        + "\n\n检索校验：当前文献相关度较高，但声明级验证未能逐条确认全部内容；请将其作为文献线索核对。"
+                    ),
+                    claims=answer.claims,
+                ), VerificationResult(
+                    evidence_sufficiency=0.0,
+                    supported_claims=0,
+                    total_claims=max(len(answer.claims), 1),
+                    unsupported_claims=tuple(
+                        claim.key for claim in answer.claims
+                    ) or ("unverified_grounded_answer",),
+                )
+            if signals.answerability >= 0.70 and parametric_answer.text.strip():
+                return Answer(
+                    text=(
+                        parametric_answer.text
+                        + "\n\n检索校验：当前文献未能逐条确认这段回答，以上内容属于模型参数记忆。"
+                    ),
+                    claims=parametric_answer.claims,
+                ), VerificationResult(
+                    evidence_sufficiency=0.0,
+                    supported_claims=0,
+                    total_claims=max(len(parametric_answer.claims), 1),
+                    unsupported_claims=tuple(
+                        claim.key for claim in parametric_answer.claims
+                    ) or ("unverified_parametric_answer",),
+                )
             return None
         claims_by_key = {claim.key: claim for claim in answer.claims}
         projected_claims = []

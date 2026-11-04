@@ -48,7 +48,7 @@ class ComplexityRouterPolicy(GatePolicy):
     """No-retrieval for short queries and retrieval for complex queries."""
 
     token_threshold: int = 12
-    name = "complexity-router"
+    name = "complexity-heuristic"
 
     def __init__(self, token_threshold: int = 12):
         super().__init__()
@@ -69,8 +69,8 @@ class ConformalAbstentionPolicy(GatePolicy):
     """Post-hoc abstention adapter using a pre-calibrated risk metadata field.
 
     A real conformal calibration step must produce ``conformal_risk`` on each
-    question. Falling back to ``1 - self_knowledge`` is explicit and useful for
-    smoke comparisons, but is not a conformal guarantee.
+    question. This policy refuses to run without that field so an uncalibrated
+    score cannot be mislabeled as a conformal result.
     """
 
     risk_target: float = 0.05
@@ -81,8 +81,14 @@ class ConformalAbstentionPolicy(GatePolicy):
         self.risk_target = risk_target
 
     def route(self, signals: BoundarySignals, question=None) -> PolicyDecision:
-        del question
-        risk = 1.0 - signals.self_knowledge
+        del signals
+        if question is None or "conformal_risk" not in question.metadata:
+            raise RuntimeError(
+                "conformal-abstention requires a pre-calibrated question.metadata['conformal_risk']"
+            )
+        risk = float(question.metadata["conformal_risk"])
+        if not 0.0 <= risk <= 1.0:
+            raise ValueError("conformal_risk must be in [0, 1]")
         if risk > self.risk_target:
             return PolicyDecision(Action.ABSTAIN, ReasonCode.HIGH_RISK_UNSUPPORTED)
         return PolicyDecision(Action.ANSWER)
@@ -98,8 +104,13 @@ def build_policy(name: str, **kwargs) -> GatePolicy:
         return AlwaysRAGPolicy()
     if normalized in {"uncalibrated-confidence", "confidence"}:
         return UncalibratedConfidencePolicy(**kwargs)
-    if normalized in {"complexity-router", "adaptive-rag"}:
+    if normalized in {"complexity-router", "complexity-heuristic"}:
         return ComplexityRouterPolicy(**kwargs)
+    if normalized == "complexity-classifier-router":
+        raise RuntimeError(
+            "complexity-classifier-router requires a trained, frozen classifier; "
+            "the token-length heuristic is exploratory-only"
+        )
     if normalized in {"conformal-abstention", "conformal"}:
         return ConformalAbstentionPolicy(**kwargs)
     raise ValueError(f"unknown routing baseline: {name}")

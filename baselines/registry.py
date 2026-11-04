@@ -15,10 +15,22 @@ BASELINES = {
     },
     "complexity-router": {
         "kind": "routing",
-        "description": "route by query complexity, Adaptive-RAG style",
+        "status": "alias-to-exploratory",
+        "description": "legacy alias; use complexity-heuristic and do not call it Adaptive-RAG reproduced",
+    },
+    "complexity-heuristic": {
+        "kind": "routing",
+        "status": "exploratory-only",
+        "description": "token-length/metadata heuristic, not the Adaptive-RAG classifier",
+    },
+    "complexity-classifier-router": {
+        "kind": "routing",
+        "status": "requires-training",
+        "description": "reserved for a trained complexity classifier with a frozen validation protocol",
     },
     "conformal-abstention": {
         "kind": "routing",
+        "status": "requires-calibration",
         "description": "abstain from a pre-calibrated risk score",
     },
     "trust-parameter": {

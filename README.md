@@ -468,9 +468,20 @@ context_tokens, output_tokens, latency_ms, failure_label
 always-answer
 always-rag
 uncalibrated-confidence
-complexity-router
-conformal-abstention
 calibrated-boundary-gate
+```
+
+需要额外训练或校准后才能运行的入口：
+
+```text
+complexity-classifier-router
+conformal-abstention
+```
+
+仅作探索性 proxy、不能写成论文方法复现：
+
+```text
+complexity-heuristic
 ```
 
 冲突基线：
@@ -488,7 +499,7 @@ claim-level
 results/runs/e2e-<routing-baseline>-<conflict-baseline>-<timestamp>/
 ```
 
-记录至少包括 `summary.json`、`results.jsonl`、`probes.jsonl`、`registry.json` 和 `PROBES.md`。训练型论文方法（例如 Self-RAG、GRACE、SABER）只有在实现其训练/校准过程后，才能标记为 reproduced；当前仓库先提供同一评测协议下的推理基线和接口。
+记录至少包括 `summary.json`、`results.jsonl`、`probes.jsonl`、`registry.json` 和 `PROBES.md`。训练型论文方法（例如 Self-RAG、GRACE、SABER）只有在实现其训练/校准过程后，才能标记为 reproduced；当前仓库先提供严格推理基线和明确标注的待实现接口。
 
 示例：
 

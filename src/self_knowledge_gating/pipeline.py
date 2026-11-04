@@ -125,7 +125,9 @@ class SelfKnowledgeGatingPipeline:
             and conflict.status == "none"
             and signals.answerability >= 0.40
         ):
-            projected = self._project_supported_claims(grounded_answer, evidence)
+            projected = self._project_supported_claims(
+                parametric_answer, grounded_answer, evidence, signals
+            )
             if projected is not None:
                 answer, verification = projected
                 outcome = Action.ANSWER
@@ -152,7 +154,7 @@ class SelfKnowledgeGatingPipeline:
             metadata=metadata,
         )
 
-    def _project_supported_claims(self, answer, evidence):
+    def _project_supported_claims(self, parametric_answer, answer, evidence, signals):
         """Return a transparent answer containing only verified claim fragments."""
         details = getattr(self.verifier, "last_details", None) or []
         supported_details = [item for item in details if item.get("supported")]
@@ -176,6 +178,25 @@ class SelfKnowledgeGatingPipeline:
             fragments.append(f"{claim.key}: {claim.value}")
         if not projected_claims:
             return None
+        evidence_note = (
+            "检索校验：当前证据直接支持的是："
+            + "；".join(fragments)
+            + "。其余参数记忆内容未在当前证据中逐条确认。"
+        )
+        if signals.answerability >= 0.70 and parametric_answer.text.strip():
+            return Answer(
+                text=parametric_answer.text + "\n\n" + evidence_note,
+                claims=parametric_answer.claims,
+            ), VerificationResult(
+                evidence_sufficiency=1.0,
+                supported_claims=len(projected_claims),
+                total_claims=len(parametric_answer.claims) or len(projected_claims),
+                unsupported_claims=tuple(
+                    claim.key
+                    for claim in parametric_answer.claims
+                    if claim.key not in {item.key for item in projected_claims}
+                ),
+            )
         text = (
             "根据当前检索证据，能够直接支持的是："
             + "；".join(fragments)

@@ -102,7 +102,7 @@ def build_pipeline() -> None:
         reranker_max_length=int(os.environ.get("RAG_RERANKER_MAX_LENGTH", "512")),
     )
     answerer = QwenAnswerer(LLM, recorder=None)
-    verifier = EmbeddingEvidenceVerifier(FT_ENCODER, threshold=0.55)
+    verifier = EmbeddingEvidenceVerifier(ENCODER, threshold=0.55)
     recorder = ProbeRecorder(f"{ROOT}/results/runs/rag-chat")
     probe_cache: dict[str, dict] = {}
 

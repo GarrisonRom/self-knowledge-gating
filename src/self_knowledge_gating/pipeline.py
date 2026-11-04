@@ -202,8 +202,6 @@ class SelfKnowledgeGatingPipeline:
             + "；".join(fragments)
             + "。其余相关内容未在当前证据中得到直接确认。"
         )
-        from .schemas import VerificationResult
-
         return Answer(text=text, claims=tuple(projected_claims)), VerificationResult(
             evidence_sufficiency=1.0,
             supported_claims=len(projected_claims),
